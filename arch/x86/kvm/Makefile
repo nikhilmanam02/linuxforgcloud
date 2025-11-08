@@ -47,3 +47,4 @@ $(obj)/kvm-asm-offsets.h: $(obj)/kvm-asm-offsets.s FORCE
 
 targets += kvm-asm-offsets.s
 clean-files += kvm-asm-offsets.h
+kvm-intel-y          += vmx/exit_stats.o

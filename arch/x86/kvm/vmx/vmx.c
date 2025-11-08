@@ -14,8 +14,10 @@
  */
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
+#include "exit_stats.h"
 #include <linux/highmem.h>
 #include <linux/hrtimer.h>
+#include <linux/atomic.h>
 #include <linux/kernel.h>
 #include <linux/kvm_host.h>
 #include <linux/module.h>
@@ -68,6 +70,7 @@
 #include "vmcs.h"
 #include "vmcs12.h"
 #include "vmx.h"
+#include "exit_stats.h"
 #include "x86.h"
 #include "x86_ops.h"
 #include "smm.h"
@@ -75,6 +78,35 @@
 #include "posted_intr.h"
 
 #include "mmu/spte.h"
+
+#define A2_MAX_EXIT_REASONS 0x100
+static atomic64_t a2_exit_counts[A2_MAX_EXIT_REASONS];
+static atomic64_t a2_exit_total;
+
+static const char *a2_exit_name(u32 r)
+{
+	switch (r) {
+	case EXIT_REASON_CPUID:              return "CPUID";
+	case EXIT_REASON_HLT:                return "HLT";
+	case EXIT_REASON_IO_INSTRUCTION:     return "IO";
+	case EXIT_REASON_MSR_READ:           return "MSR_READ";
+	case EXIT_REASON_MSR_WRITE:          return "MSR_WRITE";
+	case EXIT_REASON_EPT_VIOLATION:      return "EPT_VIOLATION";
+	case EXIT_REASON_EXTERNAL_INTERRUPT: return "EXT_INT";
+	default:                             return "UNKNOWN";
+	}
+}
+
+static void a2_dump_exit_stats(u64 tot)
+{
+	int i;
+	pr_info("KVM: A2 VMX exit stats @total=%llu\n", tot);
+	for (i = 0; i < A2_MAX_EXIT_REASONS; i++) {
+		long long c = atomic64_read(&a2_exit_counts[i]);
+		if (c)
+			pr_info("  exit %3d (%s): %lld\n", i, a2_exit_name(i), c);
+	}
+}
 
 MODULE_AUTHOR("Qumranet");
 MODULE_DESCRIPTION("KVM support for VMX (Intel VT-x) extensions");
@@ -6474,6 +6506,12 @@ void dump_vmcs(struct kvm_vcpu *vcpu)
  */
 static int __vmx_handle_exit(struct kvm_vcpu *vcpu, fastpath_t exit_fastpath)
 {
+    /* CMPE283 hooks */
+    {
+        u32 __cmpe_reason = vmcs_read32(VM_EXIT_REASON) & 0xffff;
+        cmpe283_count_exit(__cmpe_reason);
+        cmpe283_maybe_dump();
+    }
 	struct vcpu_vmx *vmx = to_vmx(vcpu);
 	union vmx_exit_reason exit_reason = vmx_get_exit_reason(vcpu);
 	u32 vectoring_info = vmx->idt_vectoring_info;
