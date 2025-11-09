@@ -3,19 +3,18 @@ CMPE 283 — Assignment 2: KVM VM-Exit Statistics
 Student: Nikhil Sai Venkat Manam
 Student id : 019107023
 Repo: https://github.com/nikhilmanam02/linuxforgcloud  
-Branch used for Assignment: `assignment2`
+Branch used for Assignment: Assignment2
 
 This repo contains a small KVM/VMX instrumentation that counts VM-exit reasons and prints a summary every 10,000 exits. Screenshots and logs are in `docs/a2/`.
 
 
  What I changed (where in the kernel)
-
  `arch/x86/kvm/vmx/exit_stats.h` — declarations for counters and helpers.
  `arch/x86/kvm/vmx/exit_stats.c` — implements:
  `atomic64_t` array indexed by exit reason (0..255)
   a global `atomic64_t` total counter
-  a small name mapper for common reasons (CPUID, HLT, IO, MSR_READ, MSR_WRITE, EPT_VIOLATION, EXTERNAL_INTERRUPT), others show as `UNKNOWN`
-  a “maybe dump” that prints a summary every 10,000 exits, omitting zero counts
+  a small name mapper for common reasons (CPUID, HLT, IO,SR_READ, MSR_WRITE, EPT_VIOLATION, EXTERNAL_INTERRUPT), others show as `UNKNOWN`
+  a maybe dump that prints a summary every 10,000 exits, omitting zero counts
  `arch/x86/kvm/Makefile` — adds `exit_stats.o` to the VMX objects.
  `arch/x86/kvm/vmx/vmx.c` — includes `exit_stats.h` and, at the **very top** of `__vmx_handle_exit(...)`, reads `VM_EXIT_REASON`, updates the counters, and calls the periodic dump helper.
  Placing the hook at the start of `__vmx_handle_exit()` ensures every exit is counted before any individual handler runs.
@@ -78,7 +77,7 @@ grep ^CONFIG_KVM_INTEL .config   # expect CONFIG_KVM_INTEL=m
 make -j"$(nproc)" M=arch/x86/kvm/vmx modules
 sudo make M=arch/x86/kvm/vmx modules_install
 sudo depmod -a
- reload (stop inner QEMU first if running)
+reload (stop inner QEMU first if running)
 pkill -TERM -f 'qemu-system-x86_64.*inner.qcow2' || true
 sudo modprobe -r kvm_intel kvm || true
 sudo modprobe kvm
@@ -90,15 +89,15 @@ dmesg | tail -n 30
 I used Ubuntu jammy cloud image, a seed ISO, and QEMU user networking with host-forward on port 2222:
 
 cd ~/inner
- seed.iso already created with user 'ubuntu' / password 'ubuntu'
+seed.iso already created with user 'ubuntu' / password 'ubuntu'
 qemu-system-x86_64 \
-  -enable-kvm -cpu host -smp 2 -m 4096 \
-  -drive file=jammy-server-cloudimg-amd64.img,if=virtio,format=qcow2,readonly=on \
-  -drive file=inner.qcow2,if=virtio,format=qcow2 \
-  -cdrom seed.iso \
-  -netdev user,id=net0,hostfwd=tcp::2222-:22 \
-  -device virtio-net-pci,netdev=net0 \
-  -daemonize -pidfile inner.pid -display none -serial none -monitor none
+enable-kvm -cpu host -smp 2 -m 4096 \
+drive file=jammy-server-cloudimg-amd64.img,if=virtio,format=qcow2,readonly=on \
+drive file=inner.qcow2,if=virtio,format=qcow2 \
+cdrom seed.iso \
+netdev user,id=net0,hostfwd=tcp::2222-:22 \
+device virtio-net-pci,netdev=net0 \
+daemonize -pidfile inner.pid -display none -serial none -monitor none
 
 
 Proof: docs/a2/qemu-port-2222.jpg.
@@ -128,7 +127,6 @@ EOF
 gcc -O2 ~/cpuidstorm.c -o ~/cpuidstorm
 scp -P 2222 ~/cpuidstorm ubuntu@127.0.0.1:/home/ubuntu/
 
-
 On the inner VM:
 
 chmod +x /home/ubuntu/cpuidstorm
@@ -145,26 +143,26 @@ dmesg -T | egrep -i 'cmpe283|exit' | tail -n 250 | tee docs/a2/dmesg-exit-dump.t
 Proof: docs/a2/dmesg-exit-dumps.jpg, docs/a2/dmesg-last-dump.jpg, and the text log docs/a2/dmesg-exit-dump.txt.
 
 
-### 3) What can you say about the frequency of exits?
+3) What can you say about the frequency of exits?
 During inner VM boot: exit rate is high (EPT setup, MSR/I/O programming, interrupts) and then tapers off at the login prompt.
 During the CPUID workload: exits increase at a steady, high rate; you can see the counter cross multiple 10k boundaries within seconds.
 When idle: mostly occasional timer/interrupt‐related activity and `HLT`/wakeups.
 
 
 
-## Screenshots & log (all under `docs/a2/`)
-- `outer-uname-hostnamect1.jpg` — outer OS + kernel info
-- `outer-kvm-ok-devkvm.jpg` — `/dev/kvm` sanity
-- `outer-lsmod-kvm.jpg` — KVM modules loaded
-- `outer-modinfo-vermagic.jpg` — `kvm_intel` vermagic matches
-- `qemu-port-2222.jpg` — QEMU port forward
-- `inner-hostnamect1.jpg` — inner VM hostname/OS
-- `inner-cloud-init-status.jpg` — cloud-init completed
-- `inner-ssh-active.jpg` — SSH active in inner VM
-- `cpuidstorm-run.jpg` — workload run result (`done: … iters`)
-- `dmesg-exit-dumps.jpg` — periodic exit dumps visible
-- `dmesg-last-dump.jpg` — latest dump example
-- `dmesg-exit-dump.txt` — tail of CMPE283 lines from `dmesg`
+Screenshots & log (all under 'docs/a2/')
+outer-uname-hostnamect1.jpg — outer OS + kernel info
+outer-kvm-ok-devkvm.jpg — /dev/kvm sanity
+outer-lsmod-kvm.jpg - kVM modules loaded
+outer-modinfo-vermagic.jpg — kvm_intel vermagic matches
+qemu-port-2222.jpg — QEMU port forward
+inner-hostnamect1.jpg — inner VM hostname/OS
+inner-cloud-init-status.jpg — cloud-init completed
+inner-ssh-active.jpg — SSH active in inner VM
+cpuidstorm-run.jpg — workload run result (done: … iters)
+dmesg-exit-dumps.jpg — periodic exit dumps visible
+dmesg-last-dump.jpg — latest dump example
+dmesg-exit-dump.txt — tail of CMPE283 lines from dmesg
 
 
 
